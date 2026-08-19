@@ -1,0 +1,14 @@
+target/
+.idea/
+*.iml
+.vscode/
+
+# Local credentials and environment overrides
+.env
+*.json
+!src/**/*.json
+service-account*.json
+
+# OS files
+.DS_Store
+Thumbs.db
