@@ -2,11 +2,14 @@ package br.com.smartlog.infrastructure.firebase;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Repository;
+import com.google.cloud.firestore.Firestore;
 import br.com.smartlog.application.port.ClienteRepository;
 import br.com.smartlog.domain.model.Cliente;
 
 @Repository
+@ConditionalOnBean(Firestore.class)
 public class FirestoreClienteRepository implements ClienteRepository {
     private final FirestoreStore store;
     public FirestoreClienteRepository(FirestoreStore store) { this.store = store; }

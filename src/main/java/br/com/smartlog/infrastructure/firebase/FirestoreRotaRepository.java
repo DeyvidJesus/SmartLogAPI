@@ -2,11 +2,14 @@ package br.com.smartlog.infrastructure.firebase;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Repository;
+import com.google.cloud.firestore.Firestore;
 import br.com.smartlog.application.port.RotaRepository;
 import br.com.smartlog.domain.model.Rota;
 
 @Repository
+@ConditionalOnBean(Firestore.class)
 public class FirestoreRotaRepository implements RotaRepository {
     private final FirestoreStore store;
     public FirestoreRotaRepository(FirestoreStore store) { this.store = store; }

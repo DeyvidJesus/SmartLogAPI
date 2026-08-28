@@ -2,11 +2,14 @@ package br.com.smartlog.infrastructure.firebase;
 
 import java.util.List;
 import java.util.Optional;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Repository;
+import com.google.cloud.firestore.Firestore;
 import br.com.smartlog.application.port.MotoristaRepository;
 import br.com.smartlog.domain.model.Motorista;
 
 @Repository
+@ConditionalOnBean(Firestore.class)
 public class FirestoreMotoristaRepository implements MotoristaRepository {
     private final FirestoreStore store;
     public FirestoreMotoristaRepository(FirestoreStore store) { this.store = store; }
