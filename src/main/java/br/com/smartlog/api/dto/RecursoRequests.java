@@ -1,12 +1,37 @@
 package br.com.smartlog.api.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 public final class RecursoRequests {
     private RecursoRequests() { }
-    public record RotaRequest(@NotBlank String nome, @NotBlank String motoristaId, @NotBlank String status) { }
-    public record ClienteRequest(@NotBlank String nome, @NotBlank @Email String email, String telefone, @NotNull Boolean ativo) { }
-    public record MotoristaRequest(@NotBlank String uid, @NotBlank String nome, @NotBlank @Email String email, @NotNull Boolean ativo) { }
+
+    public record RotaRequest(
+            @NotBlank(message = "nome obrigatório") String nome,
+            String motoristaId,
+            String status) {
+    }
+
+    public record MotoristaRequest(
+            String uid,
+            @NotBlank(message = "nome obrigatório") String nome,
+            @NotBlank(message = "email obrigatório") String email,
+            Boolean ativo) {
+    }
+
+    public record ClienteRequest(
+            @NotBlank(message = "nome obrigatório") String nome,
+            @NotBlank(message = "email obrigatório") String email,
+            String telefone,
+            Boolean ativo) {
+    }
+
+    public record VeiculoRequest(
+            @NotBlank(message = "placa obrigatória") String placa,
+            @NotBlank(message = "modelo obrigatório") String modelo,
+            String tipo,
+            Double capacidadeKg,
+            Double capacidadeM3,
+            Integer ano,
+            Boolean ativo) {
+    }
 }
