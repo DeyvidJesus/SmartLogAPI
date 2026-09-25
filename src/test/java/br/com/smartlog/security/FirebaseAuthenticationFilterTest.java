@@ -18,6 +18,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseToken;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FirebaseAuthenticationFilterTest {
 
@@ -47,6 +48,65 @@ class FirebaseAuthenticationFilterTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication().getAuthorities())
                 .extracting(Object::toString).containsExactly("ROLE_MOTORISTA");
         verify(auth).verifyIdToken("token");
+    }
+
+    @Test
+    void anyBearerTokenIsRejectedWhenFirebaseAndDevAuthAreDisabled() throws Exception {
+        FirebaseAuthenticationFilter filter = new FirebaseAuthenticationFilter(new FixedProvider<>(null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(requestWithBearer("qualquer-token"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(chain.getRequest()).isNull();
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void configuredDevTokenAuthenticatesDevUserWhenDevAuthIsEnabled() throws Exception {
+        FirebaseAuthenticationFilter filter = new FirebaseAuthenticationFilter(new FixedProvider<>(null),
+                devAuth("token-dev"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(requestWithBearer("token-dev"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chain.getRequest()).isNotNull();
+        AuthenticatedUser user = (AuthenticatedUser) SecurityContextHolder.getContext().getAuthentication()
+                .getPrincipal();
+        assertThat(user).isEqualTo(new AuthenticatedUser("admin-dev-001", "empresa-001", "ADMIN"));
+    }
+
+    @Test
+    void wrongTokenIsRejectedWhenDevAuthIsEnabled() throws Exception {
+        FirebaseAuthenticationFilter filter = new FirebaseAuthenticationFilter(new FixedProvider<>(null),
+                devAuth("token-dev"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(requestWithBearer("uid:empresa-001:ADMIN"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(chain.getRequest()).isNull();
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void devAuthEnabledWithoutTokenFailsFast() {
+        assertThatThrownBy(() -> new FirebaseAuthenticationFilter(new FixedProvider<>(null), devAuth(" ")))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    private static DevAuthProperties devAuth(String token) {
+        return new DevAuthProperties(true, token, "admin-dev-001", "empresa-001", "ADMIN");
+    }
+
+    private static MockHttpServletRequest requestWithBearer(String token) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer " + token);
+        return request;
     }
 
     private record FixedProvider<T>(T value) implements ObjectProvider<T> {

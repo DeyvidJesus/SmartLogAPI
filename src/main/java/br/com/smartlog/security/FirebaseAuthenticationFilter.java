@@ -1,6 +1,8 @@
 package br.com.smartlog.security;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -19,9 +21,24 @@ import jakarta.servlet.http.HttpServletResponse;
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private final ObjectProvider<FirebaseAuth> firebaseAuth;
+    private final DevAuthProperties devAuth;
 
     public FirebaseAuthenticationFilter(ObjectProvider<FirebaseAuth> firebaseAuth) {
+        this(firebaseAuth, DevAuthProperties.disabled());
+    }
+
+    public FirebaseAuthenticationFilter(ObjectProvider<FirebaseAuth> firebaseAuth, DevAuthProperties devAuth) {
         this.firebaseAuth = firebaseAuth;
+        this.devAuth = devAuth == null ? DevAuthProperties.disabled() : devAuth;
+        if (this.devAuth.enabled()) {
+            if (!this.devAuth.hasToken()) {
+                throw new IllegalStateException(
+                        "smartlog.security.dev-auth.enabled=true exige smartlog.security.dev-auth.token configurado");
+            }
+            if (!ListRoles.isSupported(this.devAuth.role())) {
+                throw new IllegalStateException("smartlog.security.dev-auth.role inválida: " + this.devAuth.role());
+            }
+        }
     }
 
     @Override
@@ -33,39 +50,24 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        String rawToken = header.substring(7);
         try {
-            FirebaseAuth auth = firebaseAuth.getIfAvailable();
             AuthenticatedUser user;
-
-            if (auth != null) {
-                FirebaseToken token = auth.verifyIdToken(header.substring(7));
+            if (devAuth.enabled() && matchesDevToken(rawToken)) {
+                user = new AuthenticatedUser(devAuth.uid(), devAuth.empresaId(), devAuth.role());
+            } else {
+                FirebaseAuth auth = firebaseAuth.getIfAvailable();
+                if (auth == null) {
+                    // Falha fechada: sem Firebase e sem token de desenvolvimento válido não há autenticação.
+                    throw new IllegalArgumentException("Nenhum provedor de autenticação aceitou o token");
+                }
+                FirebaseToken token = auth.verifyIdToken(rawToken);
                 String role = claim(token, "role");
                 String empresaId = claim(token, "empresaId");
                 if (!ListRoles.isSupported(role) || empresaId == null || empresaId.isBlank()) {
                     throw new IllegalArgumentException("Claims role/empresaId ausentes ou inválidas");
                 }
                 user = new AuthenticatedUser(token.getUid(), empresaId, role);
-            } else {
-                // Modo dev local sem Firebase SDK configurado
-                String rawToken = header.substring(7);
-                String role = "ADMIN";
-                String empresaId = "empresa-001";
-                String uid = "admin-dev-001";
-                if (rawToken.contains(":")) {
-                    String[] parts = rawToken.split(":");
-                    if (parts.length >= 3) {
-                        uid = parts[0];
-                        empresaId = parts[1];
-                        role = parts[2].toUpperCase();
-                    }
-                } else if (rawToken.toUpperCase().contains("MOTORISTA")) {
-                    role = "MOTORISTA";
-                    uid = "motorista-001";
-                } else if (rawToken.toUpperCase().contains("CLIENTE")) {
-                    role = "CLIENTE";
-                    uid = "cliente-001";
-                }
-                user = new AuthenticatedUser(uid, empresaId, role);
             }
 
             var authentication = new UsernamePasswordAuthenticationToken(user, null, user.authorities());
@@ -77,6 +79,12 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
             response.setContentType("application/json");
             response.getWriter().write("{\"status\":401,\"code\":\"UNAUTHORIZED\",\"message\":\"Token inválido ou expirado\",\"timestamp\":\"" + java.time.Instant.now() + "\",\"path\":\"" + request.getRequestURI() + "\"}");
         }
+    }
+
+    private boolean matchesDevToken(String rawToken) {
+        return MessageDigest.isEqual(
+                rawToken.getBytes(StandardCharsets.UTF_8),
+                devAuth.token().getBytes(StandardCharsets.UTF_8));
     }
 
     private static String claim(FirebaseToken token, String name) {

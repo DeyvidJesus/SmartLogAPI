@@ -1,0 +1,12 @@
+# Perfil de desenvolvimento local: SPRING_PROFILES_ACTIVE=dev
+# Habilita o atalho de autenticação para uso com o SmartLogWeb sem Firebase.
+# NUNCA ative este perfil em produção.
+smartlog:
+  security:
+    dev-auth:
+      enabled: true
+      # Deve coincidir com environment.development.ts (devAuthToken) no SmartLogWeb.
+      token: ${SMARTLOG_DEV_AUTH_TOKEN:smartlog-dev-token}
+      uid: admin-dev-001
+      empresa-id: empresa-001
+      role: ADMIN
