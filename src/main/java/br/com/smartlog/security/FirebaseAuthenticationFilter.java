@@ -22,6 +22,8 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private final ObjectProvider<FirebaseAuth> firebaseAuth;
     private final DevAuthProperties devAuth;
+    private FirebaseUserDirectory directory;
+    public void setDirectory(FirebaseUserDirectory directory) { this.directory = directory; }
 
     public FirebaseAuthenticationFilter(ObjectProvider<FirebaseAuth> firebaseAuth) {
         this(firebaseAuth, DevAuthProperties.disabled());
@@ -64,10 +66,14 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 FirebaseToken token = auth.verifyIdToken(rawToken);
                 String role = claim(token, "role");
                 String empresaId = claim(token, "empresaId");
+                if (directory != null) {
+                    user = directory.resolve(token);
+                } else {
                 if (!ListRoles.isSupported(role) || empresaId == null || empresaId.isBlank()) {
                     throw new IllegalArgumentException("Claims role/empresaId ausentes ou inválidas");
                 }
                 user = new AuthenticatedUser(token.getUid(), empresaId, role);
+                }
             }
 
             var authentication = new UsernamePasswordAuthenticationToken(user, null, user.authorities());

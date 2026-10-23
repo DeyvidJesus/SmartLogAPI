@@ -20,12 +20,15 @@ import com.google.firebase.cloud.FirestoreClient;
 public class FirebaseConfiguration {
 
     @Bean
-    FirebaseApp firebaseApp(FirebaseProperties properties) throws IOException {
+    FirebaseApp firebaseApp(FirebaseProperties properties, @org.springframework.beans.factory.annotation.Value("${firebase.emulator:false}") boolean emulator) throws IOException {
         if (!FirebaseApp.getApps().isEmpty()) {
             return FirebaseApp.getInstance();
         }
 
-        GoogleCredentials credentials = GoogleCredentials.getApplicationDefault();
+        if (emulator && (System.getenv("FIREBASE_AUTH_EMULATOR_HOST") == null || System.getenv("FIRESTORE_EMULATOR_HOST") == null)) {
+            throw new IllegalStateException("Configure ambos os emuladores para o perfil emulator");
+        }
+        GoogleCredentials credentials = emulator ? GoogleCredentials.create(new com.google.auth.oauth2.AccessToken("emulator-only", null)) : GoogleCredentials.getApplicationDefault();
         FirebaseOptions.Builder options = FirebaseOptions.builder().setCredentials(credentials);
         if (properties.projectId() != null && !properties.projectId().isBlank()) {
             options.setProjectId(properties.projectId());

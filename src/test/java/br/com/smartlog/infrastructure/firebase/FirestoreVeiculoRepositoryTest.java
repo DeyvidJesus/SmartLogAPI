@@ -46,7 +46,7 @@ class FirestoreVeiculoRepositoryTest {
     void findByIdMapsDocumentToDomain() {
         DocumentSnapshot document = mock(DocumentSnapshot.class, RETURNS_DEEP_STUBS);
         when(document.getId()).thenReturn("veic-1");
-        when(document.getReference().getParent().getParent().getId()).thenReturn("empresa-1");
+        when(document.getString("empresaId")).thenReturn("empresa-1");
         when(document.getString("placa")).thenReturn("ABC1D23");
         when(document.getString("modelo")).thenReturn("Accelo");
         when(document.getString("tipo")).thenReturn("VUC");
@@ -54,8 +54,8 @@ class FirestoreVeiculoRepositoryTest {
         when(document.getDouble("capacidadeM3")).thenReturn(24.0);
         when(document.getLong("ano")).thenReturn(2024L);
         when(document.getBoolean("ativo")).thenReturn(true);
-        when(document.getString("criadaEm")).thenReturn(now.toString());
-        when(document.getString("atualizadaEm")).thenReturn(now.toString());
+        when(document.get("criadaEm")).thenReturn(now.toString());
+        when(document.get("atualizadaEm")).thenReturn(now.toString());
         when(store.find("empresa-1", "veiculos", "veic-1")).thenReturn(Optional.of(document));
 
         Optional<Veiculo> result = repository.findById("empresa-1", "veic-1");

@@ -63,7 +63,7 @@ public class EntregaController {
     public EntregaResponse buscar(Authentication authentication, @PathVariable String id) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         var entrega = service.buscar(user.empresaId(), id);
-        ensureResourceScope(user, entrega.clienteId(), entrega.motoristaId());
+        ensureResourceScope(user, entrega.id(), entrega.clienteId(), entrega.motoristaId());
         return EntregaResponse.from(entrega);
     }
 
@@ -74,7 +74,7 @@ public class EntregaController {
             @Valid @RequestBody CriarEntregaRequest request) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         return ResponseEntity.status(201).body(EntregaResponse.from(service.criar(user.empresaId(),
-                request.clienteId(), request.rotaId(), request.origem(), request.destino())));
+                request.clienteId(), request.rotaId(), request.origem(), request.destino(), request.carga())));
     }
 
     @PatchMapping("/{id}/status")
@@ -84,13 +84,13 @@ public class EntregaController {
             @Valid @RequestBody AtualizarStatusRequest request) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
         var entrega = service.buscar(user.empresaId(), id);
-        ensureResourceScope(user, entrega.clienteId(), entrega.motoristaId());
+        ensureResourceScope(user, entrega.id(), entrega.clienteId(), entrega.motoristaId());
         return EntregaResponse.from(service.atualizarStatus(user.empresaId(), id, request.status()));
     }
 
-    private static void ensureResourceScope(AuthenticatedUser user, String clienteId, String motoristaId) {
+    private void ensureResourceScope(AuthenticatedUser user, String entregaId, String clienteId, String motoristaId) {
         if (user.isAdmin()) return;
-        if (user.isCliente() && user.uid().equals(clienteId)) return;
+        if (user.isCliente() && (user.uid().equals(clienteId) || service.pertenceAoCliente(user.empresaId(), entregaId, user.uid()))) return;
         if (user.isMotorista() && user.uid().equals(motoristaId)) return;
         throw new AccessDeniedException("Recurso fora do escopo do usuário");
     }

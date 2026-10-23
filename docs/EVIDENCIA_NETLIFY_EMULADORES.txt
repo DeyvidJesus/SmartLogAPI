@@ -1,0 +1,21 @@
+PASS Firebase login → server profile without custom claims
+PASS Flutter root schema → API scoped list
+PASS Driver API update → independent administrator read
+PASS Persisted app status and preserved GPS/recipient fields
+PASS Driver cannot change a colleague delivery
+PASS Tenant boundaries, client write prohibition and invalid token rejection
+PASS Direct Firestore rules reject another tenant
+PASS App GPS → API route position
+PASS LIVE Gemini → authenticated API → scoped persisted delivery: O status da entrega com código **ENT-NEXT-mvl2sjlk** é **ENTREGUE**. Esta atualização foi registrada em 23/10/2026 às 14:39:04.
+
+Informo que os campos de origem não foram preenchidos nos dados fornecidos para esta operação. A lista de entregas está completa e não há dados ausentes além da origem mencionada.
+PASS Client sees own delivery with legacy commercial clientId
+PASS Client detail is authorized by verified account email
+PASS Web create assigns route driver and persists cargo
+PASS Public signup cannot claim administrator access to an existing tenant
+PASS Driver GPS write → administrator API position without fixed markers
+PASS Driver cannot reassign a route through direct Firestore writes
+PASS Web driver registration creates a real Firebase Auth identity
+PASS Route statuses round trip between dashboard filters and driver GPS workflow
+PASS Lucas driver profile update preserves verified email and prevents privilege escalation
+INTEGRATION_OK {"delivery":"delivery-mvl2sjlk","code":"ENT-NEXT-mvl2sjlk","tenant":"tenant-mvl2sjlk","adminEmail":"admin-mvl2sjlk@example.test"}

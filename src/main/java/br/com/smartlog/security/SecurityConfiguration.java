@@ -29,8 +29,9 @@ public class SecurityConfiguration {
 
     @Bean
     FirebaseAuthenticationFilter firebaseAuthenticationFilter(ObjectProvider<FirebaseAuth> auth,
-            DevAuthProperties devAuth) {
+            DevAuthProperties devAuth, FirebaseUserDirectory directory) {
         FirebaseAuthenticationFilter filter = new FirebaseAuthenticationFilter(auth, devAuth);
+        filter.setDirectory(directory);
         if (devAuth.enabled()) {
             log.warn("ATENÇÃO: autenticação de desenvolvimento HABILITADA (smartlog.security.dev-auth.enabled=true). "
                     + "O token configurado autentica como {} da empresa {}. Nunca habilite em produção.",

@@ -14,4 +14,7 @@ public interface EntregaRepository {
     Optional<Entrega> findById(String empresaId, String id);
 
     Entrega save(Entrega entrega);
+    default boolean pertenceAoCliente(String tenant, String entregaId, String clienteUid) {
+        return findById(tenant, entregaId).map(e -> clienteUid.equals(e.clienteId())).orElse(false);
+    }
 }

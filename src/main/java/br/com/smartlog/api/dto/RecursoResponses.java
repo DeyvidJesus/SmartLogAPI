@@ -10,10 +10,10 @@ public final class RecursoResponses {
     private RecursoResponses() { }
 
     public record RotaResponse(String id, String empresaId, String nome, String motoristaId,
-            String status, Instant criadaEm, Instant atualizadaEm) {
+            String status, Instant criadaEm, Instant atualizadaEm, Rota.Localizacao localizacaoAtual) {
         public static RotaResponse from(Rota r) {
             return new RotaResponse(r.id(), r.empresaId(), r.nome(), r.motoristaId(), r.status(),
-                    r.criadaEm(), r.atualizadaEm());
+                    r.criadaEm(), r.atualizadaEm(), r.localizacaoAtual());
         }
     }
 

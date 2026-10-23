@@ -1,0 +1,11 @@
+PASS public HTTPS API without Netlify login
+PASS real Firebase login and server profile
+PASS real Firestore list scoped by company
+PASS driver status persisted and visible to administrator; legacy fields preserved
+PASS legacy client read; client write, cross-company access and invalid token blocked
+PASS persisted GPS and translated route status
+PASS real Gemini uses the persisted delivery status
+PASS app Firestore queries for driver deliveries, legacy client deliveries and driver routes
+PASS published Firestore rules: own reads, GPS and profile edits; company, email, role and assignment isolation
+LIVE_INTEGRATION_OK
+PASS all temporary accounts and documents removed

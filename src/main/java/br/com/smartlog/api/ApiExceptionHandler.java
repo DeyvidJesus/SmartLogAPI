@@ -50,6 +50,11 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "Requisição inválida", request);
     }
 
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    ResponseEntity<ProblemResponse> serviceStatus(org.springframework.web.server.ResponseStatusException e, HttpServletRequest request) {
+        return response(HttpStatus.valueOf(e.getStatusCode().value()), "SERVICE_ERROR", e.getReason(), request);
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ProblemResponse> unexpected(Exception exception, HttpServletRequest request) {
         return response(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Erro interno inesperado", request);

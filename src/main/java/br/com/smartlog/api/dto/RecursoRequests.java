@@ -1,6 +1,7 @@
 package br.com.smartlog.api.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Email;
 
 public final class RecursoRequests {
     private RecursoRequests() { }
@@ -14,13 +15,13 @@ public final class RecursoRequests {
     public record MotoristaRequest(
             String uid,
             @NotBlank(message = "nome obrigatório") String nome,
-            @NotBlank(message = "email obrigatório") String email,
+            @NotBlank(message = "email obrigatório") @Email String email,
             Boolean ativo) {
     }
 
     public record ClienteRequest(
             @NotBlank(message = "nome obrigatório") String nome,
-            @NotBlank(message = "email obrigatório") String email,
+            @NotBlank(message = "email obrigatório") @Email String email,
             String telefone,
             Boolean ativo) {
     }

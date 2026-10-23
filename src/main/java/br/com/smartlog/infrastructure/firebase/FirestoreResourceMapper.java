@@ -16,23 +16,23 @@ final class FirestoreResourceMapper {
 
     static Rota rota(DocumentSnapshot d) {
         return new Rota(d.getId(), tenant(d), d.getString("nome"), d.getString("motoristaId"),
-                d.getString("status"), instant(d, "criadaEm"), instant(d, "atualizadaEm"));
+                AppSchema.routeStatus(d.getString("status")), instant(d, "criadaEm"), instant(d, "atualizadaEm"), location(d));
     }
     static Cliente cliente(DocumentSnapshot d) {
         return new Cliente(d.getId(), tenant(d), d.getString("nome"), d.getString("email"),
-                d.getString("telefone"), Boolean.TRUE.equals(d.getBoolean("ativo")),
+                d.getString("telefone"), AppSchema.active(d),
                 instant(d, "criadaEm"), instant(d, "atualizadaEm"));
     }
     static Motorista motorista(DocumentSnapshot d) {
-        return new Motorista(d.getId(), tenant(d), d.getString("uid"), d.getString("nome"),
-                d.getString("email"), Boolean.TRUE.equals(d.getBoolean("ativo")),
+        return new Motorista(d.getId(), tenant(d), AppSchema.text(d, "uid") .isBlank() ? d.getId() : d.getString("uid"), d.getString("nome"),
+                d.getString("email"), AppSchema.active(d),
                 instant(d, "criadaEm"), instant(d, "atualizadaEm"));
     }
     static Veiculo veiculo(DocumentSnapshot d) {
         Long ano = d.getLong("ano");
         return new Veiculo(d.getId(), tenant(d), d.getString("placa"), d.getString("modelo"),
                 d.getString("tipo"), d.getDouble("capacidadeKg"), d.getDouble("capacidadeM3"),
-                ano == null ? null : ano.intValue(), Boolean.TRUE.equals(d.getBoolean("ativo")),
+                ano == null ? null : ano.intValue(), AppSchema.active(d),
                 instant(d, "criadaEm"), instant(d, "atualizadaEm"));
     }
     static Map<String, Object> map(String id, String nome, String motoristaId, String status,
@@ -61,6 +61,16 @@ final class FirestoreResourceMapper {
         m.put("ativo", v.ativo()); m.put("criadaEm", v.criadaEm().toString()); m.put("atualizadaEm", v.atualizadaEm().toString());
         return m;
     }
-    private static String tenant(DocumentSnapshot d) { return d.getReference().getParent().getParent().getId(); }
-    private static Instant instant(DocumentSnapshot d, String field) { return Instant.parse(d.getString(field)); }
+    private static Rota.Localizacao location(DocumentSnapshot d) {
+        Object raw = d.get("localizacaoAtual");
+        if (!(raw instanceof Map<?,?> data)) return null;
+        if (!(data.get("latitude") instanceof Number lat) || !(data.get("longitude") instanceof Number lng)) return null;
+        if (Math.abs(lat.doubleValue()) > 90 || Math.abs(lng.doubleValue()) > 180) return null;
+        Object time = data.get("atualizadoEm");
+        Instant at = time instanceof com.google.cloud.Timestamp timestamp ? timestamp.toDate().toInstant() : null;
+        if (time instanceof String text) { try { at = Instant.parse(text); } catch (java.time.format.DateTimeParseException ignored) { } }
+        return new Rota.Localizacao(lat.doubleValue(), lng.doubleValue(), at);
+    }
+    private static String tenant(DocumentSnapshot d) { return d.getString("empresaId"); }
+    private static Instant instant(DocumentSnapshot d, String field) { return AppSchema.instant(d, field, "criadoEm", "dataCadastro"); }
 }

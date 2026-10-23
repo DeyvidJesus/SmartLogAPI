@@ -17,6 +17,6 @@ public class FirestoreRotaRepository implements RotaRepository {
         return store.findAll(tenant, "rotas", "motoristaId", motoristaId).stream().map(FirestoreResourceMapper::rota).toList();
     }
     public Optional<Rota> findById(String tenant, String id) { return store.find(tenant, "rotas", id).map(FirestoreResourceMapper::rota); }
-    public Rota save(Rota r) { store.save(r.empresaId(), "rotas", r.id(), FirestoreResourceMapper.map(r.id(), r.nome(), r.motoristaId(), r.status(), r.criadaEm(), r.atualizadaEm())); return r; }
+    public Rota save(Rota r) { store.save(r.empresaId(), "rotas", r.id(), FirestoreResourceMapper.map(r.id(), r.nome(), r.motoristaId(), AppSchema.appRouteStatus(r.status()), r.criadaEm(), r.atualizadaEm())); return new Rota(r.id(), r.empresaId(), r.nome(), r.motoristaId(), AppSchema.routeStatus(r.status()), r.criadaEm(), r.atualizadaEm(), r.localizacaoAtual()); }
     public void delete(String tenant, String id) { store.delete(tenant, "rotas", id); }
 }

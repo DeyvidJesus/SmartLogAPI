@@ -1,0 +1,8 @@
+firebase:
+  enabled: true
+  emulator: true
+  project-id: demo-smartlog-integration
+smartlog:
+  security:
+    dev-auth:
+      enabled: false

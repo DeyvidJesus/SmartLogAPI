@@ -12,3 +12,10 @@ service-account*.json
 # OS files
 .DS_Store
 Thumbs.db
+
+# Netlify serverless adapter
+netlify/node_modules/
+netlify/.netlify/
+.netlify/
+!netlify/package.json
+!netlify/package-lock.json

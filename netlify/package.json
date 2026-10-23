@@ -1,0 +1,16 @@
+{
+  "name": "smartlog-netlify-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "start": "node local-server.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "firebase-admin": "13.6.0"
+  }
+}

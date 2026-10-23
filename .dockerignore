@@ -1,0 +1,6 @@
+.git
+target
+.env*
+service-account*
+*.json
+!src/**/*.json

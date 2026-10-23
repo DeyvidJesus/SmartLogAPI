@@ -32,6 +32,8 @@ class EntregaControllerSecurityTest {
 
     @MockBean
     EntregaRepository repository;
+    @MockBean br.com.smartlog.application.port.RotaRepository rotas;
+    @MockBean br.com.smartlog.application.port.ClienteRepository clientes;
 
     @Test
     void requestWithoutTokenReturns401() throws Exception {
@@ -50,6 +52,9 @@ class EntregaControllerSecurityTest {
 
     @Test
     void adminCanCreateEntrega() throws Exception {
+        var now=Instant.now();
+        when(rotas.findById("empresa-1","r1")).thenReturn(java.util.Optional.of(new br.com.smartlog.domain.model.Rota("r1","empresa-1","Rota","m1","Pendente",now,now)));
+        when(clientes.findById("empresa-1","c1")).thenReturn(java.util.Optional.of(new br.com.smartlog.domain.model.Cliente("c1","empresa-1","Cliente","c@example.test","",true,now,now)));
         when(repository.save(any(Entrega.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         mockMvc.perform(post("/api/v1/entregas")

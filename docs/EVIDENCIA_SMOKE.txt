@@ -1,0 +1,18 @@
+PASS Firebase login → server profile without custom claims
+PASS Flutter root schema → API scoped list
+PASS Driver API update → independent administrator read
+PASS Persisted app status and preserved GPS/recipient fields
+PASS Driver cannot change a colleague delivery
+PASS Tenant boundaries, client write prohibition and invalid token rejection
+PASS Direct Firestore rules reject another tenant
+PASS App GPS → API route position
+PASS LIVE Gemini → authenticated API → scoped persisted delivery: O status da entrega **ENT-NEXT-mvkh1bw5** é **ENTREGUE**. Esta informação foi atualizada em 23/10/2026.
+PASS Client sees own delivery with legacy commercial clientId
+PASS Client detail is authorized by verified account email
+PASS Web create assigns route driver and persists cargo
+PASS Public signup cannot claim administrator access to an existing tenant
+PASS Driver GPS write → administrator API position without fixed markers
+PASS Driver cannot reassign a route through direct Firestore writes
+PASS Web driver registration creates a real Firebase Auth identity
+PASS Route statuses round trip between dashboard filters and driver GPS workflow
+INTEGRATION_OK {"delivery":"delivery-mvkh1bw5","code":"ENT-NEXT-mvkh1bw5","tenant":"tenant-mvkh1bw5","adminEmail":"admin-mvkh1bw5@example.test"}

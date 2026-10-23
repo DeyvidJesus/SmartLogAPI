@@ -1,0 +1,23 @@
+[build]
+  command = "npm --prefix SmartLogAPI/netlify ci && npm --prefix SmartLogWeb ci && npm --prefix SmartLogWeb run build"
+  publish = "SmartLogWeb/dist/SmartLogWeb/browser"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  directory = "SmartLogAPI/netlify/functions"
+  node_bundler = "esbuild"
+  external_node_modules = ["firebase-admin"]
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"

@@ -1,3 +1,5 @@
+> Publicação atual: https://smartlog-next-2026.netlify.app — configuração e ensaio no [guia Netlify](docs/NETLIFY.md). Os procedimentos Google/Cloud Run abaixo são alternativas históricas.
+
 # SmartLog API
 
 [![CI](https://github.com/DeyvidJesus/SmartLogAPI/actions/workflows/ci.yml/badge.svg)](https://github.com/DeyvidJesus/SmartLogAPI/actions/workflows/ci.yml)
@@ -10,16 +12,11 @@ veículos) com isolamento multi-tenant por `empresaId`. Construída com Java 21,
 
 | Repositório | Papel | Situação |
 | --- | --- | --- |
-| [SmartLogAPI](https://github.com/DeyvidJesus/SmartLogAPI) (este) | Backend REST em Spring Boot | Lê e grava em `empresas/{empresaId}/{entregas,rotas,clientes,motoristas,veiculos}` |
+| [SmartLogAPI](https://github.com/DeyvidJesus/SmartLogAPI) (este) | Backend REST em Spring Boot | Lê e grava nas coleções raiz entregas, rotas, usuarios e veiculos, com empresaId |
 | [SmartLogWeb](https://github.com/DeyvidJesus/SmartLogWeb) | Painel web administrativo em Angular | Consome esta API via proxy (`/api/v1` → `localhost:8080`) |
-| [Smartlog](https://github.com/DeyvidJesus/Smartlog) | App mobile em Flutter (projeto em equipe) | Usa o mesmo projeto Firebase, mas acessa o Firestore diretamente |
+| [Smartlog](https://github.com/DeyvidJesus/Smartlog) | App mobile em Flutter (projeto em equipe) | Compartilha o Firestore; alterações de status e chat passam por esta API |
 
-Sendo transparente sobre o estado atual: o app Flutter compartilha o projeto Firebase, porém
-grava num modelo de dados diferente — coleções de nível raiz (`entregas`, `rotas`,
-`clientes`, `usuarios`) em vez das subcoleções por empresa que esta API usa
-(`empresas/{id}/entregas`). Por isso, hoje os dados criados pelo app **não aparecem** na API
-nem no painel web, e vice-versa. Unificar o app Flutter para consumir esta API é o próximo
-passo natural da arquitetura.
+A integração atual preserva o modelo do aplicativo Flutter: API, app e assistente usam as coleções raiz com empresaId. O painel autentica pelo Firebase e consulta a mesma API. Veja [configuração, emuladores e validação](docs/INTEGRACAO.md).
 
 ## Requisitos
 
@@ -84,7 +81,7 @@ br.com.smartlog
 
 Decisões importantes da arquitetura:
 
-- Firestore é acessado somente pelo backend, através da infraestrutura.
+- O painel acessa o Firestore pela API. O Flutter também usa o SDK nos fluxos originais, sob as regras de segurança compartilhadas.
 - O `empresaId` é obtido do contexto autenticado, nunca confiado no payload.
 - Firebase Authentication fornece o token Bearer; RBAC usa `ADMIN`, `MOTORISTA` e `CLIENTE`.
 - Com `FIREBASE_ENABLED=false`, os repositórios em memória são usados; com `true`, os
@@ -119,13 +116,13 @@ export FIREBASE_PROJECT_ID="seu-project-id"
 Não informe credenciais no `application.yml`, no código ou em commits. Em ambientes Google,
 prefira ADC/Workload Identity em vez de arquivos de chave.
 
-Claims obrigatórias do ID token:
+O ID token é validado criptograficamente; papel e empresa são obtidos do cadastro protegido `usuarios/{uid}`:
 
 ```json
-{"role":"ADMIN|MOTORISTA|CLIENTE","empresaId":"empresa-001"}
+{"tipoUsuario":"ADMINISTRADOR|MOTORISTA|CLIENTE","empresaId":"id-da-empresa"}
 ```
 
-O Firestore usa o caminho `empresas/{empresaId}/<coleção>`, garantindo o isolamento
+O Firestore usa o caminho coleções raiz filtradas por `empresaId`, garantindo o isolamento
 multi-tenant. O `empresaId` do payload não é aceito.
 
 ## Swagger
@@ -147,3 +144,8 @@ Com a aplicação em execução:
 O SmartLog nasceu como projeto universitário. Os entregáveis de arquitetura da disciplina
 (A02 — arquitetura da solução, A03 — modelo de API, A04 — estratégia de persistência e
 A05 — segurança, autenticação e autorização) estão em [`docs/academico/`](docs/academico/).
+
+
+## Assistente e sessão
+
+GET /api/v1/me retorna o perfil autenticado. POST /api/v1/chat consulta o Gemini com contexto restrito ao perfil e à empresa. Configure GEMINI_API_KEY somente no servidor; GEMINI_MODEL tem padrão gemini-3.1-flash-lite. O Spring não carrega .env automaticamente. Consulte docs/INTEGRACAO.md para o runner local e para publicação via Secret Manager.

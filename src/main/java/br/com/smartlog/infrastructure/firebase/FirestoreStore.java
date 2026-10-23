@@ -1,69 +1,59 @@
 package br.com.smartlog.infrastructure.firebase;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
-
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
-
-import com.google.cloud.firestore.DocumentSnapshot;
-import com.google.cloud.firestore.Firestore;
-import com.google.cloud.firestore.Query;
-
+import com.google.cloud.firestore.*;
 import br.com.smartlog.domain.exception.PersistenceException;
-
+import org.springframework.security.access.AccessDeniedException;
+/** Same root collections as Flutter and the assistant. Tenant is server supplied. */
 @Component
 public class FirestoreStore {
     private final ObjectProvider<Firestore> firestore;
-
     public FirestoreStore(ObjectProvider<Firestore> firestore) { this.firestore = firestore; }
-
-    public List<? extends DocumentSnapshot> findAll(String empresaId, String collection, String field, String value) {
+    public List<? extends DocumentSnapshot> findAll(String tenant, String name, String field, String value) {
         try {
-            Query query = collection(empresaId, collection);
-            if (field != null && value != null) query = query.whereEqualTo(field, value);
-            return query.get().get().getDocuments();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw failure("Leitura interrompida", e);
-        } catch (ExecutionException e) { throw failure("Falha na leitura", e.getCause()); }
+            Query query = collection(name).whereEqualTo("empresaId", tenant);
+            return query.get().get().getDocuments().stream()
+                    .filter(d -> field == null || value == null || value.equals(d.getString(field))).toList();
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw failure(e); }
+        catch (ExecutionException e) { throw failure(e); }
     }
-
-    public Optional<DocumentSnapshot> find(String empresaId, String collection, String id) {
+    public Optional<DocumentSnapshot> find(String tenant, String name, String id) {
         try {
-            DocumentSnapshot snapshot = collection(empresaId, collection).document(id).get().get();
-            return snapshot.exists() ? Optional.of(snapshot) : Optional.empty();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw failure("Leitura interrompida", e);
-        } catch (ExecutionException e) { throw failure("Falha na leitura", e.getCause()); }
+            DocumentSnapshot d = collection(name).document(id).get().get();
+            return AppSchema.belongs(d, tenant) ? Optional.of(d) : Optional.empty();
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw failure(e); }
+        catch (ExecutionException e) { throw failure(e); }
     }
-
-    public void save(String empresaId, String collection, String id, Map<String, Object> data) {
-        try { collection(empresaId, collection).document(id).set(data).get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw failure("Escrita interrompida", e);
-        } catch (ExecutionException e) { throw failure("Falha na escrita", e.getCause()); }
+    public void save(String tenant, String name, String id, Map<String,Object> data) {
+        try {
+            Map<String,Object> scoped = new HashMap<>(data);
+            scoped.put("empresaId", tenant);
+            firestore.getObject().runTransaction(tx -> {
+                DocumentReference ref = collection(name).document(id);
+                DocumentSnapshot old = tx.get(ref).get();
+                if (old.exists() && !AppSchema.belongs(old, tenant)) throw new AccessDeniedException("Tenant inválido");
+                tx.set(ref, scoped, SetOptions.merge());
+                return null;
+            }).get();
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw failure(e); }
+        catch (ExecutionException e) { throw failure(e); }
     }
-
-    public void delete(String empresaId, String collection, String id) {
-        try { collection(empresaId, collection).document(id).delete().get();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw failure("Exclusão interrompida", e);
-        } catch (ExecutionException e) { throw failure("Falha na exclusão", e.getCause()); }
+    public void delete(String tenant, String name, String id) {
+        try {
+            firestore.getObject().runTransaction(tx -> {
+                DocumentReference ref = collection(name).document(id);
+                if (!AppSchema.belongs(tx.get(ref).get(), tenant)) throw new AccessDeniedException("Tenant inválido");
+                tx.delete(ref); return null;
+            }).get();
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw failure(e); }
+        catch (ExecutionException e) { throw failure(e); }
     }
-
-    private com.google.cloud.firestore.CollectionReference collection(String empresaId, String name) {
+    private CollectionReference collection(String name) {
         Firestore db = firestore.getIfAvailable();
-        if (db == null) throw new PersistenceException("Firestore não está habilitado", null);
-        return db.collection("empresas").document(empresaId).collection(name);
+        if (db == null) throw new PersistenceException("Firestore não habilitado", null);
+        return db.collection(name);
     }
-
-    private static PersistenceException failure(String message, Throwable cause) {
-        return new PersistenceException(message, cause);
-    }
+    private static PersistenceException failure(Exception e) { return new PersistenceException("Falha no Firestore", e); }
 }

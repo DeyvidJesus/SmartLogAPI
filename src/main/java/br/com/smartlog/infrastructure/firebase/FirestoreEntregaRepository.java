@@ -1,111 +1,65 @@
 package br.com.smartlog.infrastructure.firebase;
-
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ExecutionException;
-
+import java.util.*;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Repository;
-
-import com.google.api.core.ApiFuture;
-import com.google.cloud.firestore.CollectionReference;
-import com.google.cloud.firestore.DocumentSnapshot;
-import com.google.cloud.firestore.Firestore;
-import com.google.cloud.firestore.Query;
-import com.google.cloud.firestore.QuerySnapshot;
-
+import com.google.cloud.firestore.*;
 import br.com.smartlog.application.port.EntregaRepository;
-import br.com.smartlog.domain.exception.PersistenceException;
-import br.com.smartlog.domain.model.Entrega;
-import br.com.smartlog.domain.model.EntregaStatus;
-
+import br.com.smartlog.domain.model.*;
 @Repository
 @ConditionalOnBean(Firestore.class)
 public class FirestoreEntregaRepository implements EntregaRepository {
-
-    private final Firestore firestore;
-
-    public FirestoreEntregaRepository(Firestore firestore) {
-        this.firestore = firestore;
+    private final FirestoreStore store;
+    public FirestoreEntregaRepository(FirestoreStore store) { this.store = store; }
+    public List<Entrega> findAll(String tenant, EntregaStatus status, String rota, String motorista, String cliente) {
+        return store.findAll(tenant, "entregas", null, null).stream()
+                .filter(d -> cliente == null || matchesClient(d, tenant, cliente)).map(FirestoreEntregaRepository::toDomain)
+                .filter(e -> status == null || e.status() == status)
+                .filter(e -> rota == null || rota.equals(e.rotaId()))
+                .filter(e -> motorista == null || motorista.equals(e.motoristaId()))
+                .toList();
     }
-
-    @Override
-    public List<Entrega> findAll(String empresaId, EntregaStatus status, String rotaId,
-            String motoristaId, String clienteId) {
-        try {
-            Query query = collection(empresaId);
-            if (status != null) query = query.whereEqualTo("status", status.name());
-            if (rotaId != null) query = query.whereEqualTo("rotaId", rotaId);
-            if (motoristaId != null) query = query.whereEqualTo("motoristaId", motoristaId);
-            if (clienteId != null) query = query.whereEqualTo("clienteId", clienteId);
-            QuerySnapshot snapshot = query.get().get();
-            List<Entrega> result = new ArrayList<>();
-            for (DocumentSnapshot document : snapshot.getDocuments()) result.add(toDomain(document));
-            return result;
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new PersistenceException("Leitura de entregas interrompida", exception);
-        } catch (ExecutionException exception) {
-            throw new PersistenceException("Falha ao ler entregas no Firestore", exception.getCause());
-        }
+    public Optional<Entrega> findById(String tenant, String id) {
+        return store.find(tenant, "entregas", id).map(FirestoreEntregaRepository::toDomain);
     }
-
-    @Override
-    public Optional<Entrega> findById(String empresaId, String id) {
-        try {
-            DocumentSnapshot document = collection(empresaId).document(id).get().get();
-            return document.exists() ? Optional.of(toDomain(document)) : Optional.empty();
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new PersistenceException("Leitura da entrega interrompida", exception);
-        } catch (ExecutionException exception) {
-            throw new PersistenceException("Falha ao ler entrega no Firestore", exception.getCause());
-        }
+    private boolean matchesClient(DocumentSnapshot d, String tenant, String uid) {
+        if (uid.equals(AppSchema.text(d, "clienteId"))) return true;
+        String email = store.find(tenant, "usuarios", uid).map(u -> AppSchema.text(u, "email")).orElse("");
+        return !email.isBlank() && email.equalsIgnoreCase(AppSchema.text(d, "emailCliente"));
     }
-
-    @Override
-    public Entrega save(Entrega entrega) {
-        try {
-            collection(entrega.empresaId()).document(entrega.id()).set(toDocument(entrega)).get();
-            return entrega;
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new PersistenceException("Escrita da entrega interrompida", exception);
-        } catch (ExecutionException exception) {
-            throw new PersistenceException("Falha ao salvar entrega no Firestore", exception.getCause());
-        }
+    @Override public boolean pertenceAoCliente(String tenant, String id, String uid) {
+        return store.find(tenant, "entregas", id).map(d -> matchesClient(d, tenant, uid)).orElse(false);
     }
-
-    private CollectionReference collection(String empresaId) {
-        return firestore.collection("empresas").document(empresaId).collection("entregas");
+    public Entrega save(Entrega e) {
+        Map<String,Object> data = new HashMap<>();
+        data.put("id", e.codigo()); data.put("codigo", e.codigo());
+        data.put("clienteId", e.clienteId()); data.put("rotaId", e.rotaId());
+        data.put("motoristaId", e.motoristaId()); data.put("status", AppSchema.appStatus(e.status()));
+        data.put("origem", e.origem()); data.put("destino", e.destino()); data.put("endereco", e.destino());
+        data.put("criadaEm", e.criadaEm().toString()); data.put("atualizadaEm", e.atualizadaEm().toString());
+        if (e.status() == EntregaStatus.ENTREGUE) data.put("entregueEm", e.atualizadaEm().toString());
+        store.find(e.empresaId(), "usuarios", e.clienteId()).ifPresent(c -> {
+            data.put("cliente", AppSchema.text(c, "nome"));
+            data.put("emailCliente", AppSchema.text(c, "email").toLowerCase());
+        });
+        if (e.motoristaId() != null && !e.motoristaId().isBlank()) store.find(e.empresaId(), "usuarios", e.motoristaId()).ifPresent(m -> data.put("motorista", AppSchema.text(m, "nome")));
+        store.find(e.empresaId(), "rotas", e.rotaId()).ifPresent(r -> data.put("regiao", AppSchema.text(r, "regiao")));
+        var carga=e.carga();
+        data.put("chaveNfe", carga.chaveNfe()); data.put("valorNfe", carga.valorNfe());
+        data.put("pesoKg", carga.pesoKg()); data.put("volumeM3", carga.volumeM3());
+        data.put("volumes", carga.volumes()); data.put("janelaEntrega", carga.janelaEntrega());
+        store.save(e.empresaId(), "entregas", e.id(), data);
+        return e;
     }
-
-    private static Map<String, Object> toDocument(Entrega entrega) {
-        Map<String, Object> data = new HashMap<>();
-        data.put("id", entrega.id());
-        data.put("codigo", entrega.codigo());
-        data.put("clienteId", entrega.clienteId());
-        data.put("rotaId", entrega.rotaId());
-        data.put("motoristaId", entrega.motoristaId());
-        data.put("status", entrega.status().name());
-        data.put("origem", entrega.origem());
-        data.put("destino", entrega.destino());
-        data.put("criadaEm", entrega.criadaEm().toString());
-        data.put("atualizadaEm", entrega.atualizadaEm().toString());
-        return data;
-    }
-
-    private static Entrega toDomain(DocumentSnapshot document) {
-        return new Entrega(document.getId(), document.getString("codigo"),
-                document.getReference().getParent().getParent().getId(),
-                document.getString("clienteId"), document.getString("rotaId"),
-                document.getString("motoristaId"), EntregaStatus.valueOf(document.getString("status")),
-                document.getString("origem"), document.getString("destino"),
-                Instant.parse(document.getString("criadaEm")),
-                Instant.parse(document.getString("atualizadaEm")));
+    private static Double number(DocumentSnapshot d,String key) { return d.get(key) instanceof Number n ? n.doubleValue() : null; }
+    private static String nullableText(DocumentSnapshot d,String key) { String s=AppSchema.text(d,key); return s.isBlank() ? null : s; }
+    static Entrega toDomain(DocumentSnapshot d) {
+        return new Entrega(d.getId(), AppSchema.code(d), AppSchema.text(d, "empresaId"),
+                AppSchema.text(d, "clienteId"), AppSchema.text(d, "rotaId"),
+                AppSchema.text(d, "motoristaId"), AppSchema.status(AppSchema.text(d, "status")),
+                AppSchema.text(d, "origem"), AppSchema.text(d, "endereco", "destino"),
+                AppSchema.instant(d, "criadaEm", "criadoEm", "dataCriacao"),
+                AppSchema.instant(d, "atualizadaEm", "entregueEm", "criadoEm", "criadaEm"),
+                new Entrega.Carga(nullableText(d,"chaveNfe"), number(d,"valorNfe"), number(d,"pesoKg"),number(d,"volumeM3"),
+                    d.get("volumes") instanceof Number n ? n.intValue() : null, nullableText(d,"janelaEntrega")));
     }
 }
