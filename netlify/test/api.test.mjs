@@ -4,6 +4,7 @@ import {createHandler} from '../src/api.mjs';
 import {ApiError} from '../src/schema.mjs';
 import {answerWithGemini} from '../src/gemini.mjs';
 import {firebaseDependencies} from '../src/firebase.mjs';
+import {buildDemoCases, DEMO_TENANT} from '../demo-cases.mjs';
 
 const at = '2026-10-23T09:00:00.000Z';
 const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
@@ -73,6 +74,41 @@ function setup({role = 'ADMIN', tenant = 'tenant-A', uid = 'driver-A', model, pr
       ...(body !== undefined ? {body: typeof body === 'string' ? body : JSON.stringify(body)} : {})}));
   return {store, user, request};
 }
+test('NEXT dataset supports driver updates, dashboard notes and public customer tracking through the API', async () => {
+  const aliases = ['admin', 'motorista1', 'motorista2', 'cliente1', 'cliente2', 'cliente3'];
+  const users = Object.fromEntries(aliases.map(alias => [alias, {uid: alias, name: alias, email: `${alias}@example.test`}]));
+  const store = new MemoryStore();
+  for (const row of buildDemoCases({users, at, photo: image, signature: image})) {
+    const [collection, id] = row.path.split('/');
+    store.seed(collection, id, row.data);
+  }
+  const user = {role: 'ADMIN', tenant: DEMO_TENANT, uid: 'admin', profile: {nome: 'Admin demo'}};
+  const handler = createHandler({store, now: () => at, authenticate: async () => user});
+  const request = (path, method = 'GET', body) => handler(new Request(`https://demo.test/api/v1${path}`, {
+    method, ...(body === undefined ? {} : {body: JSON.stringify(body)}),
+  }));
+  const {data: deliveries} = await (await request('/entregas')).json();
+  assert.equal(deliveries.length, 10);
+  assert.match(deliveries.find(row => row.codigo === 'ENT-NEXT-01').observacoes, /AO VIVO 01/);
+  const routes = await (await request('/rotas')).json();
+  assert.match(routes.find(row => row.id === 'next-rota-04').observacoes, /AO VIVO 04/);
+  assert.equal((await (await request('/ocorrencias')).json()).length, 4);
+  const receipt = await (await request('/entregas/next-case-05/comprovante')).json();
+  assert.match(receipt.recebedor, /FICTÍCIO/);
+  assert.equal(receipt.latitude, null);
+  user.role = 'MOTORISTA'; user.uid = 'motorista1';
+  assert.equal((await (await request('/entregas')).json()).data.length, 6);
+  assert.equal((await request('/entregas/next-case-02/status', 'PATCH', {status: 'EM_ROTA'})).status, 200);
+  assert.equal((await request('/entregas/next-case-02/ocorrencias', 'POST', {
+    requestId: 'next-demo-live-partial-0002', tipo: 'ENTREGA_PARCIAL', descricao: 'Falta um volume.', volumesRecebidos: 3,
+  })).status, 201);
+  user.role = 'ADMIN'; user.uid = 'admin';
+  assert.equal((await (await request('/entregas/next-case-02')).json()).status, 'EM_ROTA');
+  const share = await (await request('/entregas/next-case-09/rastreamento', 'POST', {})).json();
+  const tracked = await (await request('/rastreamento/' + share.caminho.split('/').pop())).json();
+  assert.equal(tracked.ocorrencias[0].tipo, 'ENTREGA_PARCIAL');
+  assert.ok(!JSON.stringify(tracked).includes('PRONTO 09'), 'public tracking must omit case instructions');
+});
 test('public API metadata and authenticated server-derived session', async () => {
   const {request} = setup();
   assert.equal((await request('', {auth: false})).status, 200);

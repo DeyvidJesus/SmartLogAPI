@@ -61,6 +61,7 @@ export function deliveryDto(data) {
     pesoKg: optionalNumber(data.pesoKg), volumeM3: optionalNumber(data.volumeM3),
     volumes: optionalNumber(data.volumes), janelaEntrega: data.janelaEntrega ?? null,
     recebedor: data.recebedor ?? null, observacaoEntrega: data.observacaoEntrega ?? null,
+    observacoes: data.observacoes ?? null,
     entregueEm: data.entregueEm ? instant(data.entregueEm) : null,
     confirmadoPorNome: data.confirmadoPorNome ?? null,
     historicoStatus: Array.isArray(data.historicoStatus) ? data.historicoStatus : [],
@@ -78,7 +79,7 @@ export function resourceDto(resource, data) {
     const position = data.localizacaoAtual;
     const valid = position && Number.isFinite(position.latitude) && Number.isFinite(position.longitude) &&
       Math.abs(position.latitude) <= 90 && Math.abs(position.longitude) <= 180;
-    return {...common, nome: data.nome ?? '', motoristaId: data.motoristaId ?? '',
+    return {...common, nome: data.nome ?? '', motoristaId: data.motoristaId ?? '', observacoes: data.observacoes ?? null,
       distanciaRestanteMetros: optionalNumber(data.distanciaRestanteMetros),
       distanciaCalculadaEm: data.distanciaCalculadaEm ? instant(data.distanciaCalculadaEm) : null,
       distanciaIncluiGps: data.distanciaIncluiGps === true,
