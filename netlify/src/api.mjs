@@ -1,4 +1,5 @@
 import {operationalAnswer, operationSummary} from './operational.mjs';
+import {deliveryExperience, occurrenceSummary} from './delivery-experience.mjs';
 import {randomUUID} from 'node:crypto';
 import {ApiError, active, roleOf, instant, deliveryDto, resourceDto, deliveryStatus,
   statusToApp, routeStatus, routeToApp, requiredText, optionalText, emailOf,
@@ -13,9 +14,9 @@ function ensureType(resource, data) {
   if (expected && roleOf(data) !== expected) throw new ApiError(404, 'Registro não encontrado.');
 }
 async function payload(request) {
-  if (Number(request.headers.get('content-length')) > 128000) throw new ApiError(413, 'Requisição muito grande.');
+  if (Number(request.headers.get('content-length')) > 600000) throw new ApiError(413, 'Requisição muito grande.');
   const text = await request.text();
-  if (Buffer.byteLength(text) > 128000) throw new ApiError(413, 'Requisição muito grande.');
+  if (Buffer.byteLength(text) > 600000) throw new ApiError(413, 'Requisição muito grande.');
   let body;
   try { body = JSON.parse(text); } catch { throw new ApiError(400, 'Envie um objeto JSON válido.'); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ApiError(400, 'Envie um objeto JSON válido.');
@@ -30,6 +31,7 @@ function cargo(body) {
     volumes: nonnegative(body, 'volumes', true), janelaEntrega};
 }
 export function createHandler({store, authenticate, provision, rollback, model, now = () => new Date().toISOString()}) {
+  const experience = deliveryExperience({store, now});
   async function mustGet(user, collection, id) {
     const data = await store.get(user.tenant, collection, id);
     if (!data) throw new ApiError(404, 'Registro não encontrado.', 'NOT_FOUND');
@@ -69,6 +71,10 @@ export function createHandler({store, authenticate, provision, rollback, model, 
   }
   async function deliveryRequest(request, user, parts, url) {
     const id = parts[1];
+    if (id && ['comprovante', 'ocorrencias', 'rastreamento'].includes(parts[2])) {
+      return experience.handle(request, user, parts,
+        ['POST', 'PATCH'].includes(request.method) ? await payload(request) : null);
+    }
     if (request.method === 'GET' && !id)
       return {data: (await deliveries(user, url.searchParams)).map(deliveryDto)};
     if (request.method === 'GET' && id && parts.length === 2) {
@@ -107,6 +113,8 @@ export function createHandler({store, authenticate, provision, rollback, model, 
       const updated = await store.mutate(user.tenant, 'entregas', id, previous => {
         if (user.role === 'MOTORISTA' && previous.motoristaId !== user.uid)
           throw new ApiError(403, 'Entrega fora do seu escopo.');
+        if (previous.comprovante && body.status !== 'ENTREGUE')
+          throw new ApiError(409, 'Entrega com comprovante não pode ser reaberta por alteração de status.');
         if (deliveryStatus(previous.status) === body.status) return {};
         if (user.role === 'MOTORISTA' && ['ENTREGUE', 'CANCELADA'].includes(deliveryStatus(previous.status)))
           throw new ApiError(409, 'Entrega encerrada. Peça ao administrador para reabrir.');
@@ -263,9 +271,18 @@ export function createHandler({store, authenticate, provision, rollback, model, 
         if (!decoded || decoded.includes('/') || decoded.length > 500) throw new ApiError(400, 'Identificador inválido.');
         return decoded;
       });
+      if (parts[0] === 'rastreamento' && parts.length === 2 && request.method === 'GET') {
+        headers['Referrer-Policy'] = 'no-referrer';
+        headers['X-Robots-Tag'] = 'noindex, nofollow';
+        return new Response(JSON.stringify(await experience.publicTracking(parts[1])), {headers});
+      }
       const user = await authenticate(request);
       let result;
-      if (parts[0] === 'me' && request.method === 'GET' && parts.length === 1) {
+      if (parts[0] === 'ocorrencias' && parts.length === 1 && request.method === 'GET') {
+        allowedRole(user, 'ADMIN');
+        result = (await store.all(user.tenant, 'ocorrencias')).map(occurrenceSummary)
+          .sort((a,b) => b.criadaEm.localeCompare(a.criadaEm));
+      } else if (parts[0] === 'me' && request.method === 'GET' && parts.length === 1) {
         result = {uid: user.uid, empresaId: user.tenant, role: user.role,
           nome: user.profile.nome ?? '', email: user.profile.email ?? '', demo: false};
       } else if (['chat', 'assistente'].includes(parts[0]) && parts.length === 1 && request.method === 'POST') {
