@@ -6,6 +6,9 @@ import {answerWithGemini} from '../src/gemini.mjs';
 import {firebaseDependencies} from '../src/firebase.mjs';
 
 const at = '2026-10-23T09:00:00.000Z';
+const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+const proof = {requestId: 'request-receipt-123456', recebedor: 'Maria Recebedora', fotos: [image],
+  assinatura: image, latitude: -23.55, longitude: -46.63, precisao: 15, volumesRecebidos: 2};
 class MemoryStore {
   constructor() { this.rows = new Map(); this.calls = new Set(); }
   seed(collection, id, data) { this.rows.set(collection + '/' + id, {...data, docId: id}); }
@@ -16,6 +19,9 @@ class MemoryStore {
   async get(tenant, collection, id) {
     const row = this.rows.get(collection + '/' + id);
     return row?.empresaId === tenant ? {...row} : null;
+  }
+  async resolveTracking(hash) {
+    return this.rows.get('_trackingLinks/' + hash) ?? null;
   }
   async mutate(tenant, collection, id, change, {create = false} = {}) {
     const previous = this.rows.get(collection + '/' + id);
@@ -73,6 +79,104 @@ test('public API metadata and authenticated server-derived session', async () =>
   const profile = await (await request('/me')).json();
   assert.equal(profile.empresaId, 'tenant-A'); assert.equal(profile.role, 'ADMIN');
 });
+test('app proof is persisted and returned to dashboard with authoritative time; retry is idempotent', async () => {
+  const {request, user} = setup({role:'MOTORISTA'});
+  const send = () => request('/entregas/delivery-A/comprovante', {method:'POST', body:proof});
+  assert.equal((await send()).status, 200);
+  assert.equal((await send()).status, 200);
+  user.role = 'ADMIN';
+  const row = await (await request('/entregas/delivery-A')).json();
+  assert.equal(row.status, 'ENTREGUE'); assert.equal(row.comprovanteDisponivel, true);
+  assert.equal(row.historicoStatus.length, 1); assert.equal(row.entregueEm, at);
+  assert.equal(row.comprovante, undefined, 'list DTO must not contain large evidence');
+  const receipt = await (await request('/entregas/delivery-A/comprovante')).json();
+  assert.equal(receipt.assinatura, image); assert.equal(receipt.latitude, proof.latitude);
+  assert.equal(receipt.em, at);
+  assert.equal((await request('/entregas/delivery-A/status', {method:'PATCH', body:{status:'PENDENTE'}})).status,409);
+  assert.equal((await request('/entregas/delivery-A/comprovante', {method:'POST', body:{...proof, requestId:'another-receipt-123456'}})).status,409);
+});
+test('proof validates evidence, coordinates, received quantities and rejects incomplete confirmation', async () => {
+  for (const change of [{fotos:[]}, {fotos:['https://external.test/photo']}, {assinatura:null},
+    {latitude:100}, {precisao:1500}, {volumesRecebidos:0}, {recebedor:''}]) {
+    const {request} = setup({role:'MOTORISTA'});
+    assert.equal((await request('/entregas/delivery-A/comprovante',{method:'POST',body:{...proof,...change}})).status,400);
+    assert.equal((await (await request('/entregas/delivery-A')).json()).status,'PENDENTE');
+  }
+  const {request, store} = setup({role:'MOTORISTA'});
+  await store.mutate('tenant-A','entregas','delivery-A',()=>({volumes:4}));
+  assert.equal((await request('/entregas/delivery-A/comprovante',{method:'POST',body:proof})).status,400);
+});
+test('proof authorization denies unassigned drivers, foreign tenants, client writes and anonymous access', async () => {
+  const {request} = setup({role:'MOTORISTA'});
+  assert.equal((await request('/entregas/colleague-delivery/comprovante',{method:'POST',body:proof})).status,403);
+  assert.equal((await request('/entregas/foreign-delivery/comprovante',{method:'POST',body:proof})).status,404);
+  assert.equal((await request('/entregas/delivery-A/comprovante',{auth:false})).status,401);
+  assert.equal((await setup({role:'CLIENTE'}).request('/entregas/delivery-A/comprovante',{method:'POST',body:proof})).status,403);
+});
+test('driver occurrence appears for administrator; resolution appears to customer without internal notes', async () => {
+  const {request,user,store} = setup({role:'MOTORISTA'});
+  const body = {requestId:'occurrence-request-1234',tipo:'AVARIA',descricao:'Nota interna confidencial',foto:image};
+  const response = await request('/entregas/delivery-A/ocorrencias',{method:'POST',body});
+  assert.equal(response.status,201);
+  const created = await response.json();
+  assert.equal(created.temFoto,true); assert.equal(created.foto,undefined);
+  await request('/entregas/delivery-A/ocorrencias',{method:'POST',body});
+  assert.equal((await store.all('tenant-A','ocorrencias')).length,1);
+  assert.equal((await request(`/entregas/delivery-A/ocorrencias/${created.docId}`,{method:'PATCH',body:{resolucao:'Trocar item',mensagemCliente:'Reposição agendada.'}})).status,403);
+  user.role='ADMIN';
+  assert.equal((await (await request('/entregas/delivery-A/ocorrencias')).json()).length,1);
+  assert.equal((await request(`/entregas/delivery-A/ocorrencias/${created.docId}`,{method:'PATCH',body:{resolucao:'Trocar item',mensagemCliente:'Reposição agendada.'}})).status,200);
+  const share = await (await request('/entregas/delivery-A/rastreamento',{method:'POST',body:{}})).json();
+  const tracked = await (await request('/rastreamento/'+share.caminho.split('/').pop(),{auth:false})).json();
+  assert.equal(tracked.ocorrencias[0].status,'RESOLVIDA');
+  assert.equal(tracked.ocorrencias[0].mensagem,'Reposição agendada.');
+  assert.ok(!JSON.stringify(tracked).includes('confidencial'));
+});
+test('tracking links are unguessable, rotated, revocable, expired and tenant-safe', async () => {
+  const {request,store} = setup();
+  const share = async () => (await (await request('/entregas/delivery-A/rastreamento',{method:'POST',body:{}})).json()).caminho.split('/').pop();
+  const first=await share(), second=await share();
+  assert.match(second,/^[A-Za-z0-9_-]{43}$/);
+  assert.equal((await request('/rastreamento/'+first,{auth:false})).status,404);
+  assert.equal((await request('/rastreamento/'+second,{auth:false})).status,200);
+  const tracked = await (await request('/rastreamento/'+second,{auth:false})).json();
+  for(const key of ['empresaId','motoristaId','clienteId','destino','emailCliente','assinatura']) assert.equal(tracked[key],undefined);
+  await request('/entregas/delivery-A/rastreamento',{method:'DELETE'});
+  assert.equal((await request('/rastreamento/'+second,{auth:false})).status,404);
+  assert.equal((await request('/rastreamento/delivery-A',{auth:false})).status,404);
+  const third=await share();
+  for(const row of await store.all('tenant-A','_trackingLinks')) {
+    await store.mutate('tenant-A','_trackingLinks',row.docId,()=>({expiraEm:'2020-01-01T00:00:00.000Z'}));
+  }
+  assert.equal((await request('/rastreamento/'+third,{auth:false})).status,404);
+});
+test('partial delivery occurrence preserves pending status and rejects invalid quantities', async () => {
+  const {request,store} = setup({role:'MOTORISTA'});
+  await store.mutate('tenant-A','entregas','delivery-A',()=>({volumes:4}));
+  const body={requestId:'partial-occurrence-12345',tipo:'ENTREGA_PARCIAL',descricao:'Dois volumes não recebidos',volumesRecebidos:2};
+  assert.equal((await request('/entregas/delivery-A/ocorrencias',{method:'POST',body})).status,201);
+  assert.equal((await store.get('tenant-A','entregas','delivery-A')).status,'Pendente');
+  assert.equal((await request('/entregas/delivery-A/ocorrencias',{method:'POST',body:{...body,volumesRecebidos:4}})).status,400);
+  assert.equal((await request('/entregas/colleague-delivery/ocorrencias',{method:'POST',body})).status,403);
+  assert.equal((await request('/entregas/foreign-delivery/ocorrencias',{method:'POST',body})).status,404);
+});
+test('occurrence queue is admin-only and isolates internal notes from customers and other tenants', async () => {
+  const {request,user,store}=setup({role:'MOTORISTA'});
+  const body={requestId:'private-case-123456789',tipo:'OUTRO',descricao:'Only operational staff can see this',mensagemCliente:'Estamos atendendo.',foto:image};
+  const created=await (await request('/entregas/delivery-A/ocorrencias',{method:'POST',body})).json();
+  assert.equal((await request('/ocorrencias')).status,403);
+  user.role='ADMIN';
+  await store.mutate('tenant-B','ocorrencias','foreign-case',()=>({entregaId:'foreign-delivery',tipo:'AVARIA',status:'ABERTA',criadaEm:at}),{create:true});
+  const queue=await (await request('/ocorrencias')).json();
+  assert.equal(queue.length,1);assert.equal(queue[0].docId,created.docId);assert.equal(queue[0].foto,undefined);
+  user.role='CLIENTE';user.uid='client-A';user.profile.email='client@example.test';
+  const list=await (await request('/entregas/delivery-A/ocorrencias')).json();
+  assert.equal(list[0].mensagemCliente,'Estamos atendendo.');assert.equal(list[0].descricao,undefined);
+  const detail=await (await request(`/entregas/delivery-A/ocorrencias/${created.docId}`)).json();
+  assert.equal(detail.foto,undefined);assert.equal(detail.descricao,undefined);
+  assert.equal((await request('/ocorrencias')).status,403);
+  assert.equal((await request('/entregas/foreign-delivery/ocorrencias')).status,404);
+});
 test('unauthenticated delivery requests fail closed', async () => {
   assert.equal((await setup().request('/entregas', {auth: false})).status, 401);
 });
@@ -89,7 +193,7 @@ test('client list and detail recognize a legacy commercial ID through authorized
 });
 test('confirmed driver status preserves GPS, cargo and recipient fields', async () => {
   const {request, store} = setup({role: 'MOTORISTA'});
-  const response = await request('/entregas/delivery-A/status', {method: 'PATCH', body: {status: 'ENTREGUE'}});
+  const response = await request('/entregas/delivery-A/status', {method: 'PATCH', body: {status: 'ENTREGUE', recebedor: 'Preservar'}});
   assert.equal(response.status, 200);
   const row = await store.get('tenant-A', 'entregas', 'delivery-A');
   assert.equal(row.status, 'Entregue'); assert.equal(row.pesoKg, 17);
@@ -215,7 +319,12 @@ test('AI rate limit is enforced before the provider is called again', async () =
 });
 test('AI configuration failure is explicit and never a fabricated answer', async () => {
   const {request} = setup({model: input => answerWithGemini(input, {})});
-  assert.equal((await request('/chat', {method: 'POST', body: {pergunta: 'Status?'}})).status, 503);
+  const response = await request('/chat', {method: 'POST', body: {pergunta: 'Status?'}});
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.degradado, true);
+  assert.equal(result.provedor, 'operacao');
+  assert.match(result.resposta, /IA está temporariamente indisponível/);
 });
 test('emulator mode requires both emulator endpoints and a demo project', () => {
   assert.throws(() => firebaseDependencies({SMARTLOG_EMULATOR: 'true', FIREBASE_PROJECT_ID: 'smartlog-b9b37'}), ApiError);

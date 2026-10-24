@@ -10,6 +10,20 @@ permissions:
   contents: read
 
 jobs:
+  netlify-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: netlify/package-lock.json
+      - name: Testar API de produção
+        working-directory: netlify
+        run: |
+          npm ci
+          npm test
   build:
     runs-on: ubuntu-latest
     steps:

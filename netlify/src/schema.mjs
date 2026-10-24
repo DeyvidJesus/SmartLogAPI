@@ -64,6 +64,8 @@ export function deliveryDto(data) {
     entregueEm: data.entregueEm ? instant(data.entregueEm) : null,
     confirmadoPorNome: data.confirmadoPorNome ?? null,
     historicoStatus: Array.isArray(data.historicoStatus) ? data.historicoStatus : [],
+    comprovanteDisponivel: !!data.comprovante,
+    rastreamentoAtivo: !!data.rastreamentoHash,
   };
 }
 export function resourceDto(resource, data) {

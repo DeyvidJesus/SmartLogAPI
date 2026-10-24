@@ -9,6 +9,10 @@ function clean(data) {
 }
 export class ScopedStore {
   constructor(database) { this.db = database; }
+  async resolveTracking(hash) {
+    const doc = await this.db.collection('_trackingLinks').doc(hash).get();
+    return doc.exists ? doc.data() : null;
+  }
   async all(tenant, collection) {
     const result = await this.db.collection(collection).where('empresaId', '==', tenant).get();
     return result.docs.map(doc => ({...doc.data(), docId: doc.id}));
