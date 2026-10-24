@@ -17,9 +17,13 @@ const store = {
     rows.set(collection+'/'+id,row);return structuredClone(row);
   },
   async resolveTracking(hash) {return rows.get('_trackingLinks/'+hash) ?? null;},
+  async claimChatSlot() {},
 };
 await store.mutate('integration','entregas','delivery-e2e',()=>({id:'ENT-E2E',codigo:'ENT-E2E',motoristaId:'driver',clienteId:'client',emailCliente:'client@example.test',status:'Em Rota',volumes:2,janelaEntrega:'TARDE',origem:'Centro de distribuição teste',destino:'Endereço de teste',criadaEm:new Date().toISOString()}),{create:true});
-const handler=createHandler({store,authenticate:async request=>{
+const handler=createHandler({store,
+  // Deterministic provider only in this localhost fixture; live Gemini is checked separately.
+  model:async ({context})=>context.entregas.map(row=>`${row.codigo}: ${row.status}`).join('; '),
+  authenticate:async request=>{
   const role={'Bearer integration-admin':'ADMIN','Bearer integration-driver':'MOTORISTA','Bearer integration-client':'CLIENTE'}[request.headers.get('authorization')];
   if(!role) throw new ApiError(401,'Autenticação necessária.');
   return {role,tenant:'integration',uid:role==='ADMIN'?'admin':role==='MOTORISTA'?'driver':'client',profile:{nome:'Usuário de teste',email:role==='CLIENTE'?'client@example.test':'driver@example.test'}};
